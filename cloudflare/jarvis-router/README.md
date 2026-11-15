@@ -9,9 +9,12 @@ A small Cloudflare Worker that gives the JARVIS frontend one OpenAI-compatible A
 - `GET /v1/health` and `GET /health`.
 - `GET /v1/recommended-model`.
 - `GET /v1/catalog/ollama-cloud` — authenticated catalogue lookup using the configured Ollama Cloud key.
+- `POST /v1/speech/transcribe` — Whisper speech-to-text for the existing iPhone push-to-talk UI.
+- `POST /v1/speech/synthesize` — Deepgram Aura text-to-speech returning MP3 audio.
+- `GET /v1/speech/health` and `/v1/speech/tts/health`.
 - Bearer-token authentication, CORS, request-size validation, upstream timeouts, structured logs, and bounded failover.
 
-Initial provider adapters: Ollama Cloud, Cloudflare Workers AI, OpenAI, OpenRouter, Groq, Cerebras, Mistral, Together AI, and DeepSeek. A provider only appears when its server-side credential is configured and at least one model is registered.
+Initial chat provider adapters: Ollama Cloud, Cloudflare Workers AI, OpenAI, OpenRouter, Groq, Cerebras, Mistral, Together AI, and DeepSeek. A provider only appears when its server-side credential is configured and at least one model is registered. Speech uses the Cloudflare Workers AI binding configured in `wrangler.toml`.
 
 ## Important: Ollama `:cloud` aliases
 
@@ -130,9 +133,13 @@ The URL must not include a trailing `/v1`; the existing frontend adds API paths 
 
 For production, change `JARVIS_ALLOWED_ORIGINS` from `*` to the exact Pages origin, for example `https://<your-project>.pages.dev`. The Worker still requires the bearer token on all `/v1/*` endpoints.
 
+## Speech cost and limits
+
+Cloudflare Workers AI includes a limited free allocation of 10,000 Neurons per day. Usage beyond that allocation is billed on Workers Paid; on Workers Free, further inference requests fail after the daily allocation. Current published unit prices list Whisper-large-v3-turbo at about $0.0005 per audio minute and Deepgram Aura-1 at $0.015 per 1,000 input characters. Prices can change, so check [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/) before enabling a paid plan. This is not unlimited free voice usage.
+
 ## Current scope / known limitations
 
 - Failover occurs only while an upstream has not returned a successful response. Once an SSE stream has begun, the Worker passes it through and cannot transparently switch providers mid-answer.
-- The Worker currently implements chat routing and model discovery; speech-to-text and text-to-speech require separate provider adapters and endpoints.
+- Speech is currently routed through Cloudflare Workers AI: Whisper large-v3-turbo for transcription and Deepgram Aura-1 for synthesis. The existing `bm_george` voice ID is mapped to Aura's supported `angus` speaker; this is not a voice-cloning or exact voice match.
 - Provider usage and latency are written to Worker logs. Durable analytics, per-account quota accounting, and a control dashboard are planned follow-ups.
 - The Ollama model catalogue endpoint returns direct API identifiers. The `:cloud` display alias must be explicitly mapped to the exact identifier accepted by the direct API.
