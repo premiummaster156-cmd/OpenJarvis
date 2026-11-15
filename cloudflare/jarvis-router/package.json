@@ -1,0 +1,9 @@
+{
+  "name": "jarvis-ai-router",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "dev": "wrangler dev", "deploy": "wrangler deploy", "test": "node --test" },
+  "devDependencies": { "wrangler": "^4.0.0" }
+}
