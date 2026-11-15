@@ -27,7 +27,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
+      - name: Install Wrangler
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Check Worker syntax
         run: node --check src/index.js
       - name: Run router tests
         run: npm test
+      - name: Validate Wrangler bundle
+        run: npm run deploy -- --dry-run
