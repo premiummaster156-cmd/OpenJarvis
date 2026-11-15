@@ -202,3 +202,67 @@ test("speech synthesis returns MP3 audio from Cloudflare Aura", async () => {
   assert.equal(response.headers.get("Content-Type"), "audio/mpeg");
   assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [1, 2, 3]);
 });
+
+
+test("registers additional hosted provider adapters when credentials exist", () => {
+  const providers = [
+    ["gemini", "GEMINI_API_KEY"],
+    ["xai", "XAI_API_KEY"],
+    ["huggingface", "HF_TOKEN"],
+    ["fireworks", "FIREWORKS_API_KEY"],
+    ["nvidia", "NVIDIA_API_KEY"],
+    ["sambanova", "SAMBANOVA_API_KEY"],
+  ];
+  const env = {
+    ...baseEnv,
+    ...Object.fromEntries(providers.map(([, key]) => [key, "configured"])),
+    JARVIS_MODELS: JSON.stringify(providers.map(([provider]) => ({
+      id: `${provider}/test-model`,
+      provider,
+      apiModel: "test-model",
+      billing: "metered",
+      priority: 50,
+      capabilities: ["chat"],
+    }))),
+  };
+  const models = getConfiguredModels(env);
+  for (const [provider] of providers) {
+    assert.ok(models.some((model) => model.provider === provider), `${provider} should be registered`);
+  }
+});
+
+test("billing and missing-model errors are eligible for fallback", async () => {
+  const originalFetch = globalThis.fetch;
+  const attempted = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    attempted.push(url);
+    return new Response(JSON.stringify({ error: "model unavailable" }), {
+      status: url.includes("ollama.com") ? 402 : 200,
+      headers: { "Content-Type": url.includes("ollama.com") ? "application/json" : "text/event-stream" },
+    });
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request("https://router.example/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-access-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "ollama-cloud/gemma4:cloud",
+          messages: [{ role: "user", content: "Hello" }],
+          stream: true,
+        }),
+      }),
+      baseEnv,
+    );
+    assert.equal(response.status, 200);
+    assert.equal(attempted.length, 2);
+    assert.equal(response.headers.get("X-Jarvis-Provider"), "openrouter");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
