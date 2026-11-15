@@ -116,3 +116,89 @@ test("chat request falls back before streaming when the first provider fails", a
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test("speech health reports Workers AI availability", async () => {
+  const env = {
+    ...baseEnv,
+    AI: { run: async () => ({}) },
+  };
+  const response = await worker.fetch(
+    new Request("https://router.example/v1/speech/health", {
+      headers: { Authorization: "Bearer test-access-token" },
+    }),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).available, true);
+});
+
+test("speech transcription sends uploaded audio to Cloudflare Whisper", async () => {
+  let receivedModel = "";
+  let receivedInput;
+  const env = {
+    ...baseEnv,
+    AI: {
+      run: async (model, input) => {
+        receivedModel = model;
+        receivedInput = input;
+        return { text: "Hello JARVIS", language: "en", duration: 2.5 };
+      },
+    },
+  };
+  const form = new FormData();
+  form.append("file", new Blob([new Uint8Array([1, 2, 3])], { type: "audio/webm" }), "recording.webm");
+  const response = await worker.fetch(
+    new Request("https://router.example/v1/speech/transcribe", {
+      method: "POST",
+      headers: { Authorization: "Bearer test-access-token" },
+      body: form,
+    }),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(receivedModel, "@cf/openai/whisper-large-v3-turbo");
+  assert.equal(receivedInput.audio, "AQID");
+  const result = await response.json();
+  assert.equal(result.text, "Hello JARVIS");
+  assert.equal(result.language, "en");
+  assert.equal(result.duration_seconds, 2.5);
+});
+
+test("speech synthesis returns MP3 audio from Cloudflare Aura", async () => {
+  let receivedModel = "";
+  let receivedInput;
+  const env = {
+    ...baseEnv,
+    AI: {
+      run: async (model, input, options) => {
+        receivedModel = model;
+        receivedInput = input;
+        assert.equal(options.returnRawResponse, true);
+        return new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { "Content-Type": "audio/mpeg" },
+        });
+      },
+    },
+  };
+  const response = await worker.fetch(
+    new Request("https://router.example/v1/speech/synthesize", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-access-token",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text: "Hello there", voice_id: "bm_george" }),
+    }),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(receivedModel, "@cf/deepgram/aura-1");
+  assert.equal(receivedInput.text, "Hello there");
+  assert.equal(receivedInput.speaker, "angus");
+  assert.equal(response.headers.get("Content-Type"), "audio/mpeg");
+  assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [1, 2, 3]);
+});
