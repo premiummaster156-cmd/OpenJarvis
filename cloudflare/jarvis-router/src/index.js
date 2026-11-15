@@ -300,13 +300,15 @@ function requestPayload(body, model) {
 }
 
 function shouldFailover(status) {
-  return status === 401 || status === 403 ||
-    status === 408 || status === 409 || status === 425 ||
+  return status === 401 || status === 402 || status === 403 ||
+    status === 404 || status === 408 || status === 409 || status === 425 ||
     status === 429 || status >= 500;
 }
 
 function safeError(status) {
   if (status === 401 || status === 403) return "Provider authentication failed.";
+  if (status === 402) return "Provider credits or billing limit reached.";
+  if (status === 404) return "Provider model was not found or is unavailable.";
   if (status === 429) return "Provider rate limit or capacity limit reached.";
   if (status >= 500) return "AI provider is temporarily unavailable.";
   if (status === 408) return "AI provider request timed out.";
