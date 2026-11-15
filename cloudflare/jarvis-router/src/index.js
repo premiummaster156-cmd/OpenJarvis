@@ -36,6 +36,30 @@ const PROVIDERS = {
     baseUrl: "https://api.deepseek.com/v1",
     keyName: "DEEPSEEK_API_KEY",
   },
+  "gemini": {
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    keyName: "GEMINI_API_KEY",
+  },
+  "xai": {
+    baseUrl: "https://api.x.ai/v1",
+    keyName: "XAI_API_KEY",
+  },
+  "huggingface": {
+    baseUrl: "https://router.huggingface.co/v1",
+    keyName: "HF_TOKEN",
+  },
+  "fireworks": {
+    baseUrl: "https://api.fireworks.ai/inference/v1",
+    keyName: "FIREWORKS_API_KEY",
+  },
+  "nvidia": {
+    baseUrl: "https://integrate.api.nvidia.com/v1",
+    keyName: "NVIDIA_API_KEY",
+  },
+  "sambanova": {
+    baseUrl: "https://api.sambanova.ai/v1",
+    keyName: "SAMBANOVA_API_KEY",
+  },
   "workers-ai": {
     keyName: "CLOUDFLARE_AI_TOKEN",
     cloudflare: true,
