@@ -473,7 +473,9 @@ async function handleModels(env) {
   const profiles = available
     ? [
         { id: "jarvis/auto", object: "model", created: 0, owned_by: "jarvis", name: "JARVIS Auto" },
-        { id: "jarvis/free-first", object: "model", created: 0, owned_by: "jarvis", name: "JARVIS Free First" },
+        ...(getConfiguredModels(env).some((model) => model.billing === "free")
+          ? [{ id: "jarvis/free-first", object: "model", created: 0, owned_by: "jarvis", name: "JARVIS Free First" }]
+          : []),
       ]
     : [];
   return json({ object: "list", data: [...profiles, ...models] });
