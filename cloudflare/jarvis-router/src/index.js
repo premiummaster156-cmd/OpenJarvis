@@ -481,6 +481,110 @@ async function handleModels(env) {
   return json({ object: "list", data: [...profiles, ...models] });
 }
 
+function bytesToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function hasWorkersAI(env) {
+  return Boolean(env.AI && typeof env.AI.run === "function");
+}
+
+async function handleTranscription(request, env) {
+  if (!hasWorkersAI(env)) {
+    return json({ detail: "Cloudflare Workers AI is not bound to this Worker." }, 503);
+  }
+
+  const declaredLength = Number(request.headers.get("Content-Length") || 0);
+  if (declaredLength > 8_500_000) {
+    return json({ detail: "Audio upload is too large. Keep recordings under 8 MB." }, 413);
+  }
+
+  let form;
+  try {
+    form = await request.formData();
+  } catch {
+    return json({ detail: "Expected a multipart audio upload." }, 400);
+  }
+  const file = form.get("file");
+  if (!file || typeof file.arrayBuffer !== "function") {
+    return json({ detail: "An audio file is required." }, 400);
+  }
+  if (file.size <= 0 || file.size > 8_000_000) {
+    return json({ detail: "Audio file must be between 1 byte and 8 MB." }, 413);
+  }
+
+  const audio = bytesToBase64(await file.arrayBuffer());
+  const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", {
+    audio,
+    task: "transcribe",
+  });
+
+  const text = typeof result?.text === "string" ? result.text.trim() : "";
+  if (!text) {
+    return json({ detail: "The speech model did not return a transcript." }, 502);
+  }
+  return json({
+    text,
+    language: result.language || null,
+    confidence: typeof result.confidence === "number" ? result.confidence : null,
+    duration_seconds: Number(result.duration_seconds || result.duration || 0),
+  });
+}
+
+async function handleSpeechSynthesis(request, env) {
+  if (!hasWorkersAI(env)) {
+    return json({ detail: "Cloudflare Workers AI is not bound to this Worker." }, 503);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ detail: "Expected a JSON speech request." }, 400);
+  }
+
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  if (!text) return json({ detail: "Speech text is required." }, 400);
+  if (text.length > 5_000) {
+    return json({ detail: "Speech text is limited to 5,000 characters per request." }, 413);
+  }
+
+  // The existing JARVIS page asks for bm_george. Map that legacy voice ID to
+  // Aura's supported angus voice; valid Aura speaker names pass through.
+  const speakers = new Set([
+    "angus", "asteria", "arcas", "orion", "orpheus", "athena",
+    "luna", "zeus", "perseus", "helios", "hera", "stella",
+  ]);
+  const requestedSpeaker = String(body.voice_id || "angus");
+  const speaker = requestedSpeaker === "bm_george"
+    ? "angus"
+    : speakers.has(requestedSpeaker) ? requestedSpeaker : "angus";
+
+  const audioResponse = await env.AI.run("@cf/deepgram/aura-1", {
+    text,
+    speaker,
+    encoding: "mp3",
+  }, { returnRawResponse: true });
+
+  if (!(audioResponse instanceof Response) || !audioResponse.ok) {
+    return json({ detail: "Cloudflare text-to-speech failed." }, 502);
+  }
+
+  const headers = new Headers(audioResponse.headers);
+  headers.set("Content-Type", "audio/mpeg");
+  headers.set("Cache-Control", "no-store");
+  return new Response(audioResponse.body, {
+    status: audioResponse.status,
+    headers,
+  });
+}
+
 async function handleOllamaCatalog(env) {
   if (!env.OLLAMA_API_KEY) {
     return json({ error: { message: "OLLAMA_API_KEY is not configured.", type: "provider_not_configured" } }, 503);
@@ -542,11 +646,39 @@ export default {
       }
     } else if (method === "GET" && url.pathname === "/v1/recommended-model") {
       response = json({ model: "jarvis/auto", reason: "Routes across the configured provider fallback order." });
+    } else if (method === "GET" && url.pathname === "/v1/speech/health") {
+      response = json({
+        available: hasWorkersAI(env),
+        backend: hasWorkersAI(env) ? "Cloudflare Workers AI Whisper" : undefined,
+        reason: hasWorkersAI(env) ? undefined : "Workers AI binding is not configured.",
+      });
+    } else if (method === "GET" && url.pathname === "/v1/speech/tts/health") {
+      response = json({
+        available: hasWorkersAI(env),
+        backend: hasWorkersAI(env) ? "Cloudflare Workers AI Deepgram Aura" : undefined,
+        reason: hasWorkersAI(env) ? undefined : "Workers AI binding is not configured.",
+      });
+    } else if (method === "POST" && url.pathname === "/v1/speech/transcribe") {
+      try {
+        response = await handleTranscription(request, env);
+      } catch (error) {
+        logAttempt({ requestId: crypto.randomUUID(), capability: "speech-to-text", outcome: "error" });
+        response = json({ detail: "Speech transcription failed. Check the Workers AI binding and audio format." }, 502);
+      }
+    } else if (method === "POST" && url.pathname === "/v1/speech/synthesize") {
+      try {
+        response = await handleSpeechSynthesis(request, env);
+      } catch (error) {
+        logAttempt({ requestId: crypto.randomUUID(), capability: "text-to-speech", outcome: "error" });
+        response = json({ detail: "Speech synthesis failed. Check the Workers AI binding." }, 502);
+      }
     } else if (method === "GET" && url.pathname === "/v1/health") {
       response = json({
         ok: true,
         service: "jarvis-ai-router",
         configured_models: getConfiguredModels(env).length,
+        speech_to_text: hasWorkersAI(env),
+        text_to_speech: hasWorkersAI(env),
       });
     } else if (method === "POST" && url.pathname === "/v1/chat/completions") {
       response = await handleChat(request, env);
