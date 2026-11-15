@@ -39,7 +39,20 @@ curl https://ollama.com/api/tags \
 
 ## Deploy
 
-Run these commands from this directory:
+### Deploy from GitHub (recommended for iPhone-only setup)
+
+The repository includes `.github/workflows/deploy-jarvis-router.yml`. It runs tests and a Wrangler dry-run on pushes to `feature/jarvis-voice-mode`. It deploys the Worker only after both GitHub repository secrets below are configured:
+
+- `CLOUDFLARE_API_TOKEN` — an account API token with **Workers Editor** permission (and permission to create a Worker the first time, if it does not exist).
+- `CLOUDFLARE_ACCOUNT_ID` — your Cloudflare account ID.
+
+Create the token in Cloudflare Dashboard → Manage Account → Account API tokens. Use a narrowly scoped Workers permission. Add both values in GitHub → OpenJarvis → Settings → Secrets and variables → Actions → New repository secret. Cloudflare documents this GitHub Actions flow in its [Workers CI/CD guide](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/) and [Workers permissions guide](https://developers.cloudflare.com/workers/authorization/workers/).
+
+After those two secrets are saved, the next push to the router folder deploys the Worker automatically. This workflow does not set provider API keys or `JARVIS_ACCESS_TOKEN`; configure those separately as Worker secrets in Cloudflare Dashboard → Workers & Pages → `jarvis-ai-router` → Settings → Variables and Secrets.
+
+### Manual deploy (alternative)
+
+Run these commands from this directory on a computer with Node.js 22+ and Wrangler:
 
 ```bash
 npm install
@@ -121,6 +134,24 @@ The Ollama entries are generated from `OLLAMA_CLOUD_MODEL_MAP` when `OLLAMA_API_
 ```
 
 `billing` must be set explicitly to `free`, `metered`, or `paid`. Unknown billing status is excluded from `jarvis/free-first`. Ollama Cloud is marked `metered`; it is not automatically treated as free just because a subscription tier costs $0.
+
+## Deploy the frontend to Cloudflare Pages
+
+The existing React/Vite frontend lives in `frontend/`. In Cloudflare Dashboard → Workers & Pages → Create application → Pages → Connect to Git, select this repository and choose `feature/jarvis-voice-mode` as the production branch.
+
+Use these build settings:
+
+| Setting | Value |
+|---|---|
+| Root directory | `frontend` |
+| Framework preset | `Vite` |
+| Build command | `npm ci && npm run build` |
+| Build output directory | `dist` |
+| Node.js version | `22` |
+
+The frontend's existing connection settings let you enter the Worker URL and access token from the iPhone. Alternatively, set the public build variable `VITE_API_URL` to the deployed Worker origin (no trailing `/v1`). Never put provider API keys or `JARVIS_ACCESS_TOKEN` in a `VITE_*` variable because Vite embeds those values into public browser code.
+
+Cloudflare Pages Git integration builds and deploys on pushes to the selected production branch and creates preview deployments for other branches. See the [Cloudflare Pages Git integration guide](https://developers.cloudflare.com/pages/get-started/git-integration/). The first deploy creates a public `*.pages.dev` hostname.
 
 ## Frontend connection
 
