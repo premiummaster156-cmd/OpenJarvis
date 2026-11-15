@@ -1,0 +1,33 @@
+name: JARVIS Router CI
+
+on:
+  push:
+    branches: [feature/jarvis-voice-mode]
+    paths:
+      - "cloudflare/jarvis-router/**"
+      - ".github/workflows/jarvis-router.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "cloudflare/jarvis-router/**"
+      - ".github/workflows/jarvis-router.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare/jarvis-router
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Check Worker syntax
+        run: node --check src/index.js
+      - name: Run router tests
+        run: npm test
