@@ -14,7 +14,7 @@ A small Cloudflare Worker that gives the JARVIS frontend one OpenAI-compatible A
 - `GET /v1/speech/health` and `/v1/speech/tts/health`.
 - Bearer-token authentication, CORS, request-size validation, upstream timeouts, structured logs, and bounded failover.
 
-Initial chat provider adapters: Ollama Cloud, Cloudflare Workers AI, OpenAI, OpenRouter, Groq, Cerebras, Mistral, Together AI, and DeepSeek. A provider only appears when its server-side credential is configured and at least one model is registered. Speech uses the Cloudflare Workers AI binding configured in `wrangler.toml`.
+Initial chat provider adapters: Ollama Cloud, Cloudflare Workers AI, OpenAI, OpenRouter, Groq, Cerebras, Mistral, Together AI, DeepSeek, Gemini, xAI (Grok), Hugging Face Inference Providers, Fireworks AI, NVIDIA NIM, and SambaNova. A provider only appears when its server-side credential is configured and at least one model is registered. Speech uses the Cloudflare Workers AI binding configured in `wrangler.toml`.
 
 ## Important: Ollama `:cloud` aliases
 
@@ -81,7 +81,7 @@ Only configure the providers you actually intend to use:
 | Cerebras | `CEREBRAS_API_KEY` | `https://api.cerebras.ai/v1` |
 | Mistral | `MISTRAL_API_KEY` | `https://api.mistral.ai/v1` |
 | Together AI | `TOGETHER_API_KEY` | `https://api.together.xyz/v1` |
-| DeepSeek | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` |
+| DeepSeek | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` |\n| Gemini | `GEMINI_API_KEY` | `https://generativelanguage.googleapis.com/v1beta/openai` |\n| xAI / Grok | `XAI_API_KEY` | `https://api.x.ai/v1` |\n| Hugging Face | `HF_TOKEN` | `https://router.huggingface.co/v1` |\n| Fireworks AI | `FIREWORKS_API_KEY` | `https://api.fireworks.ai/inference/v1` |\n| NVIDIA NIM | `NVIDIA_API_KEY` | `https://integrate.api.nvidia.com/v1` |\n| SambaNova | `SAMBANOVA_API_KEY` | `https://api.sambanova.ai/v1` |
 
 For Cloudflare Workers AI, create an API token with the required Workers AI permissions and set your account ID as a secret as well.
 
@@ -90,6 +90,12 @@ Example:
 ```bash
 npx wrangler secret put OPENROUTER_API_KEY
 npx wrangler secret put GROQ_API_KEY
+npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put XAI_API_KEY
+npx wrangler secret put HF_TOKEN
+npx wrangler secret put FIREWORKS_API_KEY
+npx wrangler secret put NVIDIA_API_KEY
+npx wrangler secret put SAMBANOVA_API_KEY
 npx wrangler secret put CLOUDFLARE_AI_TOKEN
 npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
 ```
