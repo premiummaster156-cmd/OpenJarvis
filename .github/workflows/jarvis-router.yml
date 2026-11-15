@@ -5,11 +5,13 @@ on:
     branches: [feature/jarvis-voice-mode]
     paths:
       - "cloudflare/jarvis-router/**"
+      - "frontend/**"
       - ".github/workflows/jarvis-router.yml"
   pull_request:
     branches: [main]
     paths:
       - "cloudflare/jarvis-router/**"
+      - "frontend/**"
       - ".github/workflows/jarvis-router.yml"
   workflow_dispatch:
 
@@ -35,3 +37,14 @@ jobs:
         run: npm test
       - name: Validate Wrangler bundle
         run: npm run deploy -- --dry-run
+
+      - name: Use reviewed frontend npm version
+        run: npm install --global npm@11.19.0
+
+      - name: Test and build iPhone web frontend
+        run: |
+          cd ../../frontend
+          npm ci
+          npm test
+          npx tsc --noEmit
+          npm run build
