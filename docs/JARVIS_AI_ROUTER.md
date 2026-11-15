@@ -81,42 +81,60 @@ An adapter owns authentication headers, URL paths, request translation, response
 
 Never expose provider API keys to the browser. Store secrets as Cloudflare Worker secrets, or encrypted per-user credentials if multi-user support is deliberately added later.
 
-## 3. First-class hosted provider: Ollama Cloud
+## 3. First-class hosted provider: Ollama Cloud models (`:cloud`)
 
-Ollama Cloud is a remote hosted inference provider, not a local Ollama installation. Its models run on Ollama's cloud infrastructure and can be called directly from a Cloudflare Worker. JARVIS does not need Ollama installed, a local Ollama daemon, or a computer running in the background.
+This integration specifically targets **Ollama cloud models**, including the model selectors shown in Ollama's app/CLI with a `:cloud` suffix (for example, `gemma4:cloud`). Older cloud model names have also appeared in the longer `*-cloud` form (for example, `qwen3-coder:480b-cloud` and `gpt-oss:120b-cloud`). These are cloud-hosted model choices, not local models.
 
-Official API options documented by Ollama:
+**No local Ollama server is needed for JARVIS.** Cloudflare Workers can call Ollama's hosted API directly from the server side.
 
-- OpenAI-compatible base URL: `https://ollama.com/v1`
-- Native Ollama API base URL: `https://ollama.com/api`
+### Important model-name translation
+
+Ollama documents two naming contexts:
+
+- In the Ollama app/CLI, choose the cloud selector, such as `gemma4:cloud`.
+- For direct API calls to `ollama.com`, send the exact hosted model identifier returned by `GET https://ollama.com/api/tags` (the official docs use `gemma4:31b` as an example), not blindly the CLI's `:cloud` alias.
+
+So JARVIS should **show and store the cloud selector** (the model the user chose), then resolve it to the corresponding direct-API model identifier from Ollama's cloud model catalogue/API tags before sending a request. Keep an explicit alias-to-API-ID mapping, refresh it from the official catalogue, and fail closed if a selector cannot be resolved. Do not blindly strip `:cloud` or `-cloud` from arbitrary strings.
+
+Official API details:
+
+- OpenAI-compatible direct cloud base URL: `https://ollama.com/v1`
+- Native direct cloud API base URL: `https://ollama.com/api`
 - Authentication: `Authorization: Bearer <OLLAMA_API_KEY>`
-- Cloud API keys are created in Ollama account settings.
-- The model catalogue can be queried from the hosted API (for example, `GET https://ollama.com/api/tags`); use the model name returned by the catalogue rather than hard-coding an old model list.
-- Cloud model names used by direct API calls may differ from the CLI's `:cloud` aliases. The adapter must use the exact identifier returned by the hosted API catalogue.
-- Ollama documents OpenAI-client compatibility, but it is a supported subset; verify streaming, tool calling, vision and other capabilities per model/API path before advertising them in JARVIS.
+- Model list / hosted identifiers: `GET https://ollama.com/api/tags`
+- Ollama's direct cloud API does not require installing its app or CLI.
 
-Implementation requirements:
+### Adapter implementation requirements
 
 1. Add `OLLAMA_API_KEY` as a Cloudflare Worker secret. Never ship it in JavaScript served to the iPhone.
-2. Implement an `ollama-cloud` adapter that calls `https://ollama.com/v1` or the native `/api` endpoint.
-3. Start with chat completions and streaming. Translate requests and SSE events into JARVIS's internal format.
-4. Discover or refresh available models through Ollama's hosted model catalogue. Keep a short cache and allow manual refresh from the owner settings.
-5. Store model capability metadata (tools, vision, reasoning, context size) only when verified from the provider/model catalogue or an explicit capability test.
-6. Parse authentication errors, rate/quota limits, concurrency queue responses, unavailable models, and upstream 5xx/timeouts into distinct error classes.
-7. Respect any upstream retry/reset guidance, enforce a request timeout, and feed failures into the common router resilience logic.
+2. Implement an `ollama-cloud` provider adapter using `https://ollama.com/v1` (or native `/api` endpoints where needed).
+3. Add a model discovery sync that reads `https://ollama.com/api/tags` and reconciles the available hosted API identifiers with the current cloud-model catalogue.
+4. Store both `displayModelId` (for example, `gemma4:cloud`) and `apiModelId` (for example, the exact returned identifier `gemma4:31b`). Never assume the mapping by string manipulation.
+5. Show cloud-only Ollama models in JARVIS's model picker and clearly label the provider as **Ollama Cloud**.
+6. Verify each model's capabilities (tools, vision, reasoning, context size) before advertising those features. OpenAI compatibility is a subset; test streaming and tool-call behavior per selected model.
+7. Parse authentication, payment/credit, rate-limit, concurrency-queue, unavailable-model, timeout and upstream 5xx errors into distinct error classes.
+8. Respect upstream retry guidance, enforce timeouts, and feed failures into the common router resilience logic.
 
 ### Ollama Cloud cost and quota policy
 
-Ollama's Free plan includes limited cloud usage for lighter tasks; it is not unlimited free inference. Usage limits and eligible models vary by plan and model. Paid plans provide higher limits and access to larger models. JARVIS must treat Ollama Cloud as a metered/limited provider, track usage where the API/account exposes it, and never assume every listed model is available on the Free plan.
+Ollama's current pricing page describes a **$0 Pay as you go subscription tier, but cloud inference is still charged per token using usage credits**. Pro and Max include monthly usage credits; pay-as-you-go usage is not free inference. The `:cloud` suffix identifies where the model runs, not a free plan. The pricing page lists different rates by model and can change.
 
-The `jarvis/free-first` route may use Ollama Cloud only when the currently selected model/account is eligible within the configured free allowance. It must not silently consume paid credits or trigger paid overage. When the free allowance is exhausted, mark that target unavailable for the free-only policy and try the next eligible free provider.
+For JARVIS:
+
+- Mark Ollama Cloud models as **metered**, not automatically free.
+- The `jarvis/free-first` profile must not select a metered Ollama Cloud target unless the user explicitly enables a spend budget for it.
+- Add a per-request and monthly cost ceiling for Ollama Cloud; stop routing when the configured budget is reached.
+- Do not silently fall through to a paid target from a free-only profile.
+- Display the estimated cost and provider-reported usage where available; distinguish estimates from provider billing data.
+- Keep Ollama Cloud disabled in strict free-only mode by default.
 
 Official references:
-- [Ollama Cloud documentation](https://docs.ollama.com/cloud)
-- [Ollama API introduction](https://docs.ollama.com/api/introduction)
-- [Ollama API authentication](https://docs.ollama.com/api/authentication)
-- [Ollama pricing and usage limits](https://ollama.com/pricing)
-- [Ollama cloud model catalogue](https://ollama.com/search?c=cloud)
+- [Ollama cloud model guide](https://docs.ollama.com/cloud)
+- [Ollama direct API introduction](https://docs.ollama.com/api/introduction)
+- [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility)
+- [Ollama authentication](https://docs.ollama.com/api/authentication)
+- [Ollama live cloud-model catalogue](https://ollama.com/search?c=cloud)
+- [Ollama current pricing](https://ollama.com/pricing)
 
 ## 4. Provider and model registry
 
@@ -126,7 +144,7 @@ Represent a configured target with fields such as:
 - model ID
 - active / disabled state
 - capability tags: chat, reasoning, vision, tools, audio
-- free / paid classification and plan eligibility (informational and time-sensitive; never assume free means unlimited)
+- free / metered classification and plan eligibility (informational and time-sensitive; never assume cloud means free)
 - priority and optional weight
 - request timeout
 - known context limit
@@ -228,11 +246,11 @@ Cloudflare Workers are the control plane and request gateway. In this project, J
 - Worker API with OpenAI-compatible request contract
 - provider adapter interface
 - Cloudflare Workers AI adapter
-- Ollama Cloud adapter using the hosted `https://ollama.com/v1` API and server-side `OLLAMA_API_KEY`
+- Ollama Cloud adapter for cloud-only `:cloud` model selectors, resolving each to an exact hosted API model ID from Ollama's live catalogue; use server-side `OLLAMA_API_KEY`
 - one additional external OpenAI-compatible adapter
 - secrets, authentication, request IDs and basic usage logging
 - deterministic fallback before any stream output
-- hard free-only routing policy that cannot silently use paid provider credits
+- hard free-only routing policy that excludes metered Ollama Cloud models unless the owner explicitly sets a spend budget
 
 ### Phase B — robust routing
 - provider/model registry and dynamic Ollama Cloud model catalogue refresh
