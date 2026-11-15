@@ -1,0 +1,47 @@
+name: Deploy JARVIS Cloudflare Worker
+
+on:
+  push:
+    branches: [feature/jarvis-voice-mode]
+    paths:
+      - "cloudflare/jarvis-router/**"
+      - ".github/workflows/deploy-jarvis-router.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare/jarvis-router
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install Wrangler
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Check Worker syntax
+        run: node --check src/index.js
+
+      - name: Run router tests
+        run: npm test
+
+      - name: Validate Worker bundle
+        run: npm run deploy -- --dry-run
+
+      - name: Deploy to Cloudflare when credentials are configured
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::Worker deployment skipped. Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID as GitHub Actions repository secrets to enable automatic deployment."
+            exit 0
+          fi
+          npm run deploy
