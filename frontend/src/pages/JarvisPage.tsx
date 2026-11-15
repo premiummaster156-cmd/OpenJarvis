@@ -16,7 +16,7 @@ export function JarvisPage() {
   const [busy, setBusy] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [callMode, setCallMode] = useState(false);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { state: speechState, available: speechAvailable, error: speechError, startRecording, stopRecording } = useSpeech();
@@ -24,8 +24,8 @@ export function JarvisPage() {
   useEffect(() => () => {
     abortRef.current?.abort();
     if (audioRef.current) audioRef.current.pause();
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-  }, [audioUrl]);
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+  }, []);
 
   const speak = useCallback(async (text: string) => {
     if (!voiceEnabled || !text.trim()) return;
@@ -33,13 +33,11 @@ export function JarvisPage() {
       setStatus('Speaking');
       const blob = await synthesizeSpeech(text, { voiceId: 'bm_george' });
       const url = URL.createObjectURL(blob);
-      setAudioUrl((old) => {
-        if (old) URL.revokeObjectURL(old);
-        return url;
-      });
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = url;
       const audio = new Audio(url);
       audioRef.current = audio;
-      audio.onended = () => setStatus(callMode ? 'Call connected' : 'Standing by');
+      audio.onended = () => setStatus(callMode ? 'Voice session active' : 'Standing by');
       await audio.play();
     } catch {
       setStatus('Voice output unavailable');
@@ -176,7 +174,7 @@ export function JarvisPage() {
           </form>
           <div className="mt-3 flex items-center justify-between text-[10px] font-mono uppercase tracking-[.15em] text-slate-500">
             <span>Local-first · OpenJarvis engine</span>
-            <button onClick={() => { if (callMode) endCall(); else { setCallMode(true); setStatus('Call session active'); } }} className="flex items-center gap-2 rounded-full border border-cyan-300/20 px-3 py-1.5 text-cyan-100/80 hover:bg-cyan-300/10">
+            <button onClick={() => { if (callMode) endCall(); else { setCallMode(true); setStatus('Voice session active'); } }} className="flex items-center gap-2 rounded-full border border-cyan-300/20 px-3 py-1.5 text-cyan-100/80 hover:bg-cyan-300/10">
               {callMode ? <PhoneOff size={12} /> : <Phone size={12} />}
               {callMode ? 'End session' : 'Start voice session'}
             </button>
